@@ -3,6 +3,7 @@ package com.wizcut.app
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import androidx.core.content.edit
 
 object WizPreferences {
 
@@ -27,7 +28,7 @@ object WizPreferences {
 
             devices.add(
                 WizDevice(
-                    ip = "",
+                    ip = item.optString("ip", ""),
                     mac = mac,
                     isOn = item.optBoolean("isOn", false),
                     brightness = if (item.has("brightness") &&
@@ -71,6 +72,7 @@ object WizPreferences {
             val item = JSONObject().apply {
                 put("mac", device.mac)
                 put("isOn", device.isOn)
+                put("ip", device.ip)
 
                 if (device.brightness != null) {
                     put("brightness", device.brightness)
@@ -82,9 +84,9 @@ object WizPreferences {
             array.put(item)
         }
 
-        prefs.edit()
-            .putString(BULBS_KEY, array.toString())
-            .apply()
+        prefs.edit {
+            putString(BULBS_KEY, array.toString())
+        }
     }
 
     fun saveName(
@@ -97,8 +99,8 @@ object WizPreferences {
             Context.MODE_PRIVATE
         )
 
-        prefs.edit()
-            .putString("name_$mac", name)
-            .apply()
+        prefs.edit {
+            putString("name_$mac", name)
+        }
     }
 }
