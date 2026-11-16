@@ -1,7 +1,7 @@
-
 package com.wizcut.app
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -12,15 +12,25 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
+import com.wizcut.app.ui.theme.DarkBackground
+import com.wizcut.app.ui.theme.LightGray
+import com.wizcut.app.ui.theme.MidGray
+import com.wizcut.app.ui.theme.SurfaceVariant
+import com.wizcut.app.ui.theme.White
 import com.wizcut.app.ui.theme.WiZcutTheme
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
+import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        DeviceRepository.load(this)
+        WizShortcuts.publish(this, DeviceRepository.devices)
 
         setContent {
             WiZcutTheme {
@@ -32,24 +42,37 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun DiscoveryScreen() {
 
-        var devices by remember {
-            mutableStateOf(WizPreferences.load(this))
-        }
+        val devices = DeviceRepository.devices
 
         var scanning by remember {
             mutableStateOf(false)
         }
 
-        var status by remember {
-            mutableStateOf("Ready")
-        }
+        // Query every known bulb once when the app opens, so each card
+        // shows the bulb's actual state instead of the last saved one.
+        LaunchedEffect(Unit) {
+            devices
+                .filter { it.ip.isNotBlank() }
+                .forEach { device ->
+                    thread {
+                        try {
+                            val fresh = WizController.getPilot(device)
 
-        fun updateDevice(updated: WizDevice) {
-            devices = devices.map {
-                if (it.mac == updated.mac) updated else it
-            }
-
-            WizPreferences.save(this@MainActivity, devices)
+                            runOnUiThread {
+                                DeviceRepository.update(this@MainActivity, fresh)
+                            }
+                        } catch (_: Exception) {
+                            // Bulb is unreachable; dim its card and
+                            // disable its controls.
+                            runOnUiThread {
+                                DeviceRepository.update(
+                                    this@MainActivity,
+                                    device.copy(isOnline = false)
+                                )
+                            }
+                        }
+                    }
+                }
         }
 
         Surface(
@@ -60,15 +83,13 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
-                    .padding(20.dp)
             ) {
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(20.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-
 
                     Text(
                         text = "WiZcut",
@@ -79,7 +100,6 @@ class MainActivity : ComponentActivity() {
                         onClick = {
                             if (!scanning) {
                                 scanning = true
-                                status = "Searching for bulbs..."
 
                                 thread {
                                     try {
@@ -88,7 +108,7 @@ class MainActivity : ComponentActivity() {
                                         runOnUiThread {
                                             val merged = linkedMapOf<String, WizDevice>()
 
-                                            devices.forEach {
+                                            DeviceRepository.devices.forEach {
                                                 merged[it.mac] = it
                                             }
 
@@ -96,25 +116,27 @@ class MainActivity : ComponentActivity() {
                                                 merged[it.mac] = it
                                             }
 
-                                            devices = merged.values.toList()
-
-                                            WizPreferences.save(
+                                            DeviceRepository.replaceAll(
                                                 this@MainActivity,
-                                                devices
+                                                merged.values.toList()
                                             )
 
-                                            status = if (discovered.isEmpty()) {
-                                                "No new responses. Showing saved bulbs."
-                                            } else {
-                                                "Found ${discovered.size} bulb(s)"
-                                            }
+                                            WizShortcuts.publish(
+                                                this@MainActivity,
+                                                DeviceRepository.devices
+                                            )
 
                                             scanning = false
                                         }
 
                                     } catch (e: Exception) {
                                         runOnUiThread {
-                                            status = "Discovery failed: ${e.message}"
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Discovery failed: ${e.message}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+
                                             scanning = false
                                         }
                                     }
@@ -128,16 +150,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Text(
-                    text = status,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(20.dp))
 
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -159,27 +171,38 @@ class MainActivity : ComponentActivity() {
                                     device.mac,
                                     newName
                                 )
+
+                                WizShortcuts.publish(
+                                    this@MainActivity,
+                                    DeviceRepository.devices
+                                )
                             },
                             onPowerChange = { requestedState ->
+                                thread {
+                                    try {
+                                        val updated = WizController.setPower(
+                                            device,
+                                            requestedState
+                                        )
 
-                                if (device.ip.isBlank()) {
-                                    status = "Find bulbs to refresh their addresses"
-                                } else {
-                                    thread {
-                                        try {
-                                            val updated = WizController.setPower(
-                                                device,
-                                                requestedState
+                                        runOnUiThread {
+                                            DeviceRepository.update(
+                                                this@MainActivity,
+                                                updated
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        runOnUiThread {
+                                            DeviceRepository.update(
+                                                this@MainActivity,
+                                                device.copy(isOnline = false)
                                             )
 
-                                            runOnUiThread {
-                                                updateDevice(updated)
-                                                status = " "
-                                            }
-                                        } catch (e: Exception) {
-                                            runOnUiThread {
-                                                status = "Power command failed: ${e.message}"
-                                            }
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Power command failed: ${e.message}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                         }
                                     }
                                 }
@@ -187,7 +210,11 @@ class MainActivity : ComponentActivity() {
                             onBrightnessChange = { brightness ->
 
                                 if (device.ip.isBlank()) {
-                                    status = "Find bulbs to refresh their addresses"
+                                    Toast.makeText(
+                                        this@MainActivity,
+                                        "Find bulbs to refresh their addresses",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 } else {
                                     thread {
                                         try {
@@ -197,12 +224,23 @@ class MainActivity : ComponentActivity() {
                                             )
 
                                             runOnUiThread {
-                                                updateDevice(updated)
-                                                status = " "
+                                                DeviceRepository.update(
+                                                    this@MainActivity,
+                                                    updated
+                                                )
                                             }
                                         } catch (e: Exception) {
                                             runOnUiThread {
-                                                status = "Brightness command failed: ${e.message}"
+                                                DeviceRepository.update(
+                                                    this@MainActivity,
+                                                    device.copy(isOnline = false)
+                                                )
+
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    "Brightness command failed: ${e.message}",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                             }
                                         }
                                     }
@@ -214,7 +252,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-
 
     @Composable
     private fun BulbCard(
@@ -235,30 +272,61 @@ class MainActivity : ComponentActivity() {
         }
 
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .alpha(if (device.isOnline) 1f else 0.45f),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color.Transparent
             ),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(0.dp),
+            border = null,
+            elevation = CardDefaults.cardElevation(0.dp)
+
         ) {
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = MaterialTheme.colorScheme.outline
+            )
+
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.padding(20.dp)
             ) {
+                OutlinedTextField(
+                    value = editedName,
+                    onValueChange = {
+                        editedName = it
+                        onNameChange(it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Bulb name") },
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedTextField(
-                        value = editedName,
+                    Slider(
+                        value = sliderValue,
                         onValueChange = {
-                            editedName = it
-                            onNameChange(it)
+                            sliderValue = it
                         },
-                        modifier = Modifier.weight(0.8f),
-                        singleLine = true,
-                        label = { Text("Bulb name") },
-                        shape = RoundedCornerShape(10.dp)
+                        onValueChangeFinished = {
+                            onBrightnessChange(
+                                sliderValue.roundToInt()
+                            )
+                        },
+                        valueRange = 10f..100f,
+                        enabled = device.isOnline,
+                        colors = SliderDefaults.colors(
+                            thumbColor = White,
+                            activeTrackColor = White,
+                            inactiveTrackColor = SurfaceVariant
+                        ),
+                        modifier = Modifier.weight(1f)
                     )
 
                     Spacer(modifier = Modifier.width(16.dp))
@@ -266,25 +334,17 @@ class MainActivity : ComponentActivity() {
                     Switch(
                         checked = device.isOn,
                         onCheckedChange = onPowerChange,
-                        enabled = device.ip.isNotBlank()
+                        enabled = device.isOnline,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = DarkBackground,
+                            checkedTrackColor = White,
+                            checkedBorderColor = White,
+                            uncheckedThumbColor = LightGray,
+                            uncheckedTrackColor = SurfaceVariant,
+                            uncheckedBorderColor = MidGray
+                        )
                     )
                 }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Slider(
-                    value = sliderValue,
-                    onValueChange = {
-                        sliderValue = it
-                    },
-                    onValueChangeFinished = {
-                        onBrightnessChange(
-                            sliderValue.roundToInt()
-                        )
-                    },
-                    valueRange = 10f..100f,
-                    enabled = device.ip.isNotBlank()
-                )
             }
         }
     }

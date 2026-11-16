@@ -10,7 +10,8 @@ data class WizDevice(
     val ip: String,
     val mac: String,
     val isOn: Boolean,
-    val brightness: Int?
+    val brightness: Int?,
+    val isOnline: Boolean = false
 )
 
 object WizDiscovery {
@@ -71,7 +72,8 @@ object WizDiscovery {
                             result.optInt("dimming")
                         } else {
                             null
-                        }
+                        },
+                        isOnline = true
                     )
 
                     devices[mac] = device

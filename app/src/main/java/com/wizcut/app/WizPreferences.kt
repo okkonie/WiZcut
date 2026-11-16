@@ -37,7 +37,11 @@ object WizPreferences {
                         item.optInt("brightness")
                     } else {
                         null
-                    }
+                    },
+                    isOnline = item.optBoolean(
+                        "isOnline",
+                        item.optString("ip").isNotBlank()
+                    )
                 )
             )
         }
@@ -73,6 +77,7 @@ object WizPreferences {
                 put("mac", device.mac)
                 put("isOn", device.isOn)
                 put("ip", device.ip)
+                put("isOnline", device.isOnline)
 
                 if (device.brightness != null) {
                     put("brightness", device.brightness)

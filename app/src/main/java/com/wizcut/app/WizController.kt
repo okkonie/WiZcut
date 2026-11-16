@@ -53,7 +53,15 @@ object WizController {
         }
     }
 
-    private fun getPilot(device: WizDevice): WizDevice {
+    /**
+     * Reads a bulb's current power and brightness state with a getPilot
+     * request. Throws if the bulb does not respond within 2 seconds.
+     */
+    fun getPilot(device: WizDevice): WizDevice {
+        require(device.ip.isNotBlank()) {
+            "Bulb IP address is unknown. Run discovery first."
+        }
+
         val message = JSONObject().apply {
             put("method", "getPilot")
             put("params", JSONObject())
@@ -97,7 +105,8 @@ object WizController {
                 brightness = result.optInt(
                     "dimming",
                     device.brightness ?: 100
-                )
+                ),
+                isOnline = true
             )
         }
     }
