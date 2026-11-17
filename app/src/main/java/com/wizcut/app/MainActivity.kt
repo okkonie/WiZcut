@@ -5,14 +5,18 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.wizcut.app.ui.theme.DarkBackground
 import com.wizcut.app.ui.theme.LightGray
@@ -83,6 +87,7 @@ class MainActivity : ComponentActivity() {
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.systemBars)
+                    .verticalScroll(rememberScrollState())
             ) {
 
                 Row(
@@ -103,7 +108,8 @@ class MainActivity : ComponentActivity() {
 
                                 thread {
                                     try {
-                                        val discovered = WizDiscovery.discover()
+                                        val discovered =
+                                            WizDiscovery.discover(this@MainActivity)
 
                                         runOnUiThread {
                                             val merged = linkedMapOf<String, WizDevice>()
@@ -151,13 +157,12 @@ class MainActivity : ComponentActivity() {
 
                 }
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(
-                        items = devices,
-                        key = { it.mac }
-                    ) { device ->
+                    devices.forEach { device ->
 
                         BulbCard(
                             device = device,
@@ -248,6 +253,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+
                 }
             }
         }
@@ -264,6 +270,8 @@ class MainActivity : ComponentActivity() {
         var editedName by remember(device.mac, name) {
             mutableStateOf(name)
         }
+
+        val focusManager = LocalFocusManager.current
 
         var sliderValue by remember(device.mac, device.brightness) {
             mutableFloatStateOf(
@@ -300,7 +308,15 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text("Bulb name") },
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            focusManager.clearFocus()
+                        }
+                    )
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))

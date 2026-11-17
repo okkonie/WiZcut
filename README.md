@@ -17,11 +17,11 @@ A minimal Android app for controlling [WiZ](https://www.wizconnected.com/) smart
 
 WiZ bulbs expose a simple JSON-over-UDP API on port **38899**. WiZcut uses it directly:
 
-| Action | Method | Payload |
-| --- | --- | --- |
-| Discover | Broadcast `getPilot` to `255.255.255.255:38899` | Every bulb replies with its MAC, power state, and dimming level |
-| Toggle / dim | Unicast `setPilot` to the bulb's IP | `{"state": true}` or `{"dimming": 50}` |
-| Read state | Unicast `getPilot` | Every bulb is queried when the app opens, and again after each command to confirm the new state |
+| Action       | Method                                          | Payload                                                                                         |
+| ------------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Discover     | Broadcast `getPilot` to `255.255.255.255:38899` | Every bulb replies with its MAC, power state, and dimming level                                 |
+| Toggle / dim | Unicast `setPilot` to the bulb's IP             | `{"state": true}` or `{"dimming": 50}`                                                          |
+| Read state   | Unicast `getPilot`                              | Every bulb is queried when the app opens, and again after each command to confirm the new state |
 
 The UI is a single Jetpack Compose (Material 3) screen: tap **Find bulbs** to scan for 4 seconds, then use the name field, slider, and switch on each bulb card.
 
@@ -46,6 +46,9 @@ Open the project in [Android Studio](https://developer.android.com/studio) and r
 
 # Install on a connected device
 ./gradlew installDebug
+
+# Launch on wireless adb device
+adb shell monkey -p com.wizvut.app 1
 ```
 
 ## Project structure
@@ -74,3 +77,8 @@ app/src/main/java/com/wizcut/app/
 - On/off and brightness only — no color, color temperature, scenes, or scheduling (yet).
 - Bulbs are identified by IP address, which can change; offline bulbs are dimmed and disabled — re-run **Find bulbs** to refresh their addresses and bring them back.
 - Discovery relies on UDP broadcast, so it won't work across networks with client isolation enabled (common on guest Wi-Fi).
+
+## TODO
+
+- [ ] app icon
+- [ ] color + color temperature selection

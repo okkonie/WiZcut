@@ -26,7 +26,10 @@ object WizShortcuts {
         val shortcuts = devices
             .take(max)
             .map { device ->
+                // An empty label makes ShortcutInfoCompat.Builder throw
+                // IllegalArgumentException, so fall back to the default.
                 val name = WizPreferences.loadName(context, device.mac)
+                    .ifBlank { "WiZ bulb ${device.mac.takeLast(4)}" }
 
                 val toggleIntent = Intent(context, ToggleActivity::class.java).apply {
                     action = ACTION_TOGGLE
