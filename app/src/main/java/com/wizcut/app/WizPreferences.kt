@@ -41,7 +41,32 @@ object WizPreferences {
                     isOnline = item.optBoolean(
                         "isOnline",
                         item.optString("ip").isNotBlank()
-                    )
+                    ),
+                    moduleName = if (item.isNull("moduleName")) {
+                        null
+                    } else {
+                        item.optString("moduleName").takeIf { it.isNotBlank() }
+                    },
+                    color = if (item.has("color") && !item.isNull("color")) {
+                        item.optInt("color")
+                    } else {
+                        null
+                    },
+                    colorTemp = if (item.has("colorTemp") && !item.isNull("colorTemp")) {
+                        item.optInt("colorTemp")
+                    } else {
+                        null
+                    },
+                    kelvinMin = if (item.has("kelvinMin") && !item.isNull("kelvinMin")) {
+                        item.optInt("kelvinMin")
+                    } else {
+                        null
+                    },
+                    kelvinMax = if (item.has("kelvinMax") && !item.isNull("kelvinMax")) {
+                        item.optInt("kelvinMax")
+                    } else {
+                        null
+                    }
                 )
             )
         }
@@ -83,6 +108,36 @@ object WizPreferences {
                     put("brightness", device.brightness)
                 } else {
                     put("brightness", JSONObject.NULL)
+                }
+
+                if (device.moduleName != null) {
+                    put("moduleName", device.moduleName)
+                } else {
+                    put("moduleName", JSONObject.NULL)
+                }
+
+                if (device.color != null) {
+                    put("color", device.color)
+                } else {
+                    put("color", JSONObject.NULL)
+                }
+
+                if (device.colorTemp != null) {
+                    put("colorTemp", device.colorTemp)
+                } else {
+                    put("colorTemp", JSONObject.NULL)
+                }
+
+                if (device.kelvinMin != null) {
+                    put("kelvinMin", device.kelvinMin)
+                } else {
+                    put("kelvinMin", JSONObject.NULL)
+                }
+
+                if (device.kelvinMax != null) {
+                    put("kelvinMax", device.kelvinMax)
+                } else {
+                    put("kelvinMax", JSONObject.NULL)
                 }
             }
 

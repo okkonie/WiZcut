@@ -13,20 +13,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.wizcut.app.ui.theme.DarkBackground
 import com.wizcut.app.ui.theme.LightGray
-import com.wizcut.app.ui.theme.MidGray
 import com.wizcut.app.ui.theme.SurfaceVariant
 import com.wizcut.app.ui.theme.White
 import com.wizcut.app.ui.theme.WiZcutTheme
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
-import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
 
@@ -43,6 +43,49 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Runs a bulb command on a worker thread, then updates the shared
+     * repository (and with it every card, widget, and shortcut). Marks
+     * the bulb offline and toasts on failure.
+     */
+    private fun sendCommand(
+        device: WizDevice,
+        failureMessage: String,
+        command: () -> WizDevice
+    ) {
+        if (device.ip.isBlank()) {
+            Toast.makeText(
+                this,
+                "Find bulbs to refresh their addresses",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        thread {
+            try {
+                val updated = command()
+
+                runOnUiThread {
+                    DeviceRepository.update(this, updated)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    DeviceRepository.update(
+                        this,
+                        device.copy(isOnline = false)
+                    )
+
+                    Toast.makeText(
+                        this,
+                        "$failureMessage: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+    }
+
     @Composable
     private fun DiscoveryScreen() {
 
@@ -54,13 +97,26 @@ class MainActivity : ComponentActivity() {
 
         // Query every known bulb once when the app opens, so each card
         // shows the bulb's actual state instead of the last saved one.
+        // Bulbs whose module is not known yet are also asked for their
+        // capabilities (getSystemConfig).
         LaunchedEffect(Unit) {
             devices
                 .filter { it.ip.isNotBlank() }
                 .forEach { device ->
                     thread {
                         try {
-                            val fresh = WizController.getPilot(device)
+                            var fresh = WizController.getPilot(device)
+
+                            if (!fresh.capabilitiesKnown) {
+                                // Failure here is not fatal — the bulb
+                                // already answered getPilot, so it is
+                                // online; color controls just stay
+                                // hidden until it identifies itself.
+                                try {
+                                    fresh = WizController.getSystemConfig(fresh)
+                                } catch (_: Exception) {
+                                }
+                            }
 
                             runOnUiThread {
                                 DeviceRepository.update(this@MainActivity, fresh)
@@ -118,8 +174,17 @@ class MainActivity : ComponentActivity() {
                                                 merged[it.mac] = it
                                             }
 
-                                            discovered.forEach {
-                                                merged[it.mac] = it
+                                            // Keep everything known about a saved
+                                            // bulb (module name, color state);
+                                            // only refresh address and state.
+                                            discovered.forEach { fresh ->
+                                                val saved = merged[fresh.mac]
+                                                merged[fresh.mac] = saved?.copy(
+                                                    ip = fresh.ip,
+                                                    isOn = fresh.isOn,
+                                                    brightness = fresh.brightness,
+                                                    isOnline = true
+                                                ) ?: fresh
                                             }
 
                                             DeviceRepository.replaceAll(
@@ -133,6 +198,36 @@ class MainActivity : ComponentActivity() {
                                             )
 
                                             scanning = false
+
+                                            // Ask newly found bulbs which module
+                                            // they are, so color/temperature
+                                            // controls appear if supported.
+                                            merged.values
+                                                .filter {
+                                                    !it.capabilitiesKnown &&
+                                                        it.ip.isNotBlank()
+                                                }
+                                                .forEach { device ->
+                                                    thread {
+                                                        try {
+                                                            val withCaps =
+                                                                WizController.getSystemConfig(
+                                                                    device
+                                                                )
+
+                                                            runOnUiThread {
+                                                                DeviceRepository.update(
+                                                                    this@MainActivity,
+                                                                    withCaps
+                                                                )
+                                                            }
+                                                        } catch (_: Exception) {
+                                                            // Bulb does not identify
+                                                            // itself; controls stay
+                                                            // hidden for it.
+                                                        }
+                                                    }
+                                                }
                                         }
 
                                     } catch (e: Exception) {
@@ -183,72 +278,18 @@ class MainActivity : ComponentActivity() {
                                 )
                             },
                             onPowerChange = { requestedState ->
-                                thread {
-                                    try {
-                                        val updated = WizController.setPower(
-                                            device,
-                                            requestedState
-                                        )
-
-                                        runOnUiThread {
-                                            DeviceRepository.update(
-                                                this@MainActivity,
-                                                updated
-                                            )
-                                        }
-                                    } catch (e: Exception) {
-                                        runOnUiThread {
-                                            DeviceRepository.update(
-                                                this@MainActivity,
-                                                device.copy(isOnline = false)
-                                            )
-
-                                            Toast.makeText(
-                                                this@MainActivity,
-                                                "Power command failed: ${e.message}",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                    }
+                                sendCommand(device, "Power command failed") {
+                                    WizController.setPower(device, requestedState)
                                 }
                             },
                             onBrightnessChange = { brightness ->
-
-                                if (device.ip.isBlank()) {
-                                    Toast.makeText(
-                                        this@MainActivity,
-                                        "Find bulbs to refresh their addresses",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    thread {
-                                        try {
-                                            val updated = WizController.setBrightness(
-                                                device,
-                                                brightness
-                                            )
-
-                                            runOnUiThread {
-                                                DeviceRepository.update(
-                                                    this@MainActivity,
-                                                    updated
-                                                )
-                                            }
-                                        } catch (e: Exception) {
-                                            runOnUiThread {
-                                                DeviceRepository.update(
-                                                    this@MainActivity,
-                                                    device.copy(isOnline = false)
-                                                )
-
-                                                Toast.makeText(
-                                                    this@MainActivity,
-                                                    "Brightness command failed: ${e.message}",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
-                                            }
-                                        }
-                                    }
+                                sendCommand(device, "Brightness command failed") {
+                                    WizController.setBrightness(device, brightness)
+                                }
+                            },
+                            onTempChange = { kelvin ->
+                                sendCommand(device, "Temperature command failed") {
+                                    WizController.setColorTemp(device, kelvin)
                                 }
                             }
                         )
@@ -265,7 +306,8 @@ class MainActivity : ComponentActivity() {
         name: String,
         onNameChange: (String) -> Unit,
         onPowerChange: (Boolean) -> Unit,
-        onBrightnessChange: (Int) -> Unit
+        onBrightnessChange: (Int) -> Unit,
+        onTempChange: (Int) -> Unit
     ) {
         var editedName by remember(device.mac, name) {
             mutableStateOf(name)
@@ -299,27 +341,84 @@ class MainActivity : ComponentActivity() {
             Column(
                 modifier = Modifier.padding(20.dp)
             ) {
-                OutlinedTextField(
-                    value = editedName,
-                    onValueChange = {
-                        editedName = it
-                        onNameChange(it)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Bulb name") },
-                    shape = RoundedCornerShape(10.dp),
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = {
-                            focusManager.clearFocus()
-                        }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    OutlinedTextField(
+                        value = editedName,
+                        onValueChange = {
+                            editedName = it
+                            onNameChange(it)
+                        },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        label = { Text("Bulb name") },
+                        shape = RoundedCornerShape(10.dp),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                focusManager.clearFocus()
+                            }
+                        )
                     )
-                )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    val container = if (device.isOn) White else SurfaceVariant
+                    val content = if (device.isOn) DarkBackground else LightGray
+
+                    Button(
+                        onClick = {
+                            onPowerChange(!device.isOn)
+                        },
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = container,
+                            contentColor = content,
+                            // The card already dims when offline; don't
+                            // dim the button a second time.
+                            disabledContainerColor = container,
+                            disabledContentColor = content
+                        ),
+                        contentPadding = PaddingValues(0.dp),
+                        enabled = device.isOnline
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.lightbulb_24),
+                            contentDescription = if (device.isOn) {
+                                "Turn off"
+                            } else {
+                                "Turn on"
+                            },
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Brightness",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = LightGray
+                    )
+
+                    Text(
+                        text = "${sliderValue.roundToInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = LightGray
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -344,24 +443,70 @@ class MainActivity : ComponentActivity() {
                         ),
                         modifier = Modifier.weight(1f)
                     )
+                }
 
-                    Spacer(modifier = Modifier.width(16.dp))
+                // Temperature slider, only when the bulb reports a
+                // tunable-white capability.
+                device.kelvinRange?.let {
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Switch(
-                        checked = device.isOn,
-                        onCheckedChange = onPowerChange,
-                        enabled = device.isOnline,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = DarkBackground,
-                            checkedTrackColor = White,
-                            checkedBorderColor = White,
-                            uncheckedThumbColor = LightGray,
-                            uncheckedTrackColor = SurfaceVariant,
-                            uncheckedBorderColor = MidGray
-                        )
+                    TemperatureControls(
+                        device = device,
+                        onTempChange = onTempChange
                     )
                 }
             }
+        }
+    }
+
+    /**
+     * Warm-to-cool white temperature control, using the same native
+     * slider style as the brightness control. The kelvin range comes
+     * from the bulb (reported kelvinRange or its module type).
+     */
+    @Composable
+    private fun TemperatureControls(
+        device: WizDevice,
+        onTempChange: (Int) -> Unit
+    ) {
+        val range = device.kelvinRange ?: return
+
+        var value by remember(device.mac, device.colorTemp) {
+            mutableFloatStateOf((device.colorTemp ?: range.first).toFloat())
+        }
+
+        Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Temperature",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LightGray
+                )
+
+                Text(
+                    text = "${value.roundToInt()} K",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = LightGray
+                )
+            }
+
+            Slider(
+                value = value,
+                onValueChange = { value = it },
+                onValueChangeFinished = {
+                    onTempChange(value.roundToInt())
+                },
+                valueRange = range.first.toFloat()..range.last.toFloat(),
+                enabled = device.isOnline,
+                colors = SliderDefaults.colors(
+                    thumbColor = White,
+                    activeTrackColor = White,
+                    inactiveTrackColor = SurfaceVariant
+                )
+            )
         }
     }
 }

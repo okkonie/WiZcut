@@ -42,7 +42,7 @@ object WizShortcuts {
                     .setIcon(
                         IconCompat.createWithResource(
                             context,
-                            R.drawable.ic_shortcut_bulb
+                            R.drawable.lightbulb_24
                         )
                     )
                     .setIntent(toggleIntent)

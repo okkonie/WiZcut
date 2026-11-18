@@ -9,7 +9,7 @@ val MidGray = Color(0xFF6E6E6E)    // Outlines, dividers, unchecked switch borde
 val DimGray = Color(0xFF4A4A4A)    // Subtle outlines (disabled and unfocused states)
 
 // Dark neutrals – background and surfaces
-val DarkBackground = Color(0xFF111111)  // App background
+val DarkBackground = Color(0xFF151515)  // App background
 val DarkSurface = Color(0xFF232323)     // Cards and elevated surfaces
 val SurfaceVariant = Color(0xFF444444)  // Inactive slider track, unchecked switch track
 

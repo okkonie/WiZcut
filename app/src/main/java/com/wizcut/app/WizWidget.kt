@@ -94,6 +94,9 @@ class WizWidget : AppWidgetProvider() {
 
         private const val ICON_DIM = 0x66FFFFFF
 
+        /** Dark bulb icon used on the white power circle. */
+        private const val ICON_DARK = 0xFF151515.toInt()
+
         /**
          * Picks the layout for the widget's current size. Uses the
          * portrait dimensions reported by the launcher; a widget at
@@ -143,12 +146,24 @@ class WizWidget : AppWidgetProvider() {
             val isOn = online && device!!.isOn
             val brightness = device?.brightness ?: 100
 
-            // Power button uses the same circle as the brightness
-            // buttons; only the icon tint reflects the state.
+            // Power button mirrors the app's button: white circle
+            // with a dark bulb while on, dark circle with a light
+            // bulb while off (dim icon when offline).
+            views.setInt(
+                R.id.btnPower,
+                "setBackgroundResource",
+                if (isOn) R.drawable.widget_button_power_on
+                else R.drawable.widget_button_circle
+            )
+
             views.setInt(
                 R.id.btnPowerIcon,
                 "setColorFilter",
-                if (isOn) Color.WHITE else ICON_DIM
+                when {
+                    isOn -> ICON_DARK
+                    online -> Color.WHITE
+                    else -> ICON_DIM
+                }
             )
 
             if (layout != R.layout.wiz_widget_compact) {

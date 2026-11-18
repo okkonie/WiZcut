@@ -14,8 +14,28 @@ data class WizDevice(
     val mac: String,
     val isOn: Boolean,
     val brightness: Int?,
-    val isOnline: Boolean = false
-)
+    val isOnline: Boolean = false,
+    val moduleName: String? = null,
+    val color: Int? = null,
+    val colorTemp: Int? = null,
+    val kelvinMin: Int? = null,
+    val kelvinMax: Int? = null
+) {
+    /** True only once the bulb reported its module name. */
+    val capabilitiesKnown: Boolean get() = moduleName != null
+
+    val supportsRgb: Boolean
+        get() = moduleName?.let { WizCapabilities.supportsRgb(it) } == true
+
+    /** Kelvin range reported by the bulb, or derived from its module name. */
+    val kelvinRange: IntRange?
+        get() {
+            if (kelvinMin != null && kelvinMax != null && kelvinMax > kelvinMin) {
+                return kelvinMin..kelvinMax
+            }
+            return moduleName?.let { WizCapabilities.kelvinRange(it) }
+        }
+}
 
 object WizDiscovery {
 

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Matches DarkBackground in ui/theme/Color.kt -->
-    <color name="dark_background">#FF111111</color>
+    <color name="dark_background">#FF151515</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
     <!-- Widget -->
-    <color name="widget_button">#FF2A2A2C</color>
-    <color name="widget_button_dim">#662A2A2C</color>
+    <color name="widget_button">#FF151515</color>
+    <color name="widget_button_dim">#66151515</color>
 </resources>

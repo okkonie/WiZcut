@@ -22,7 +22,7 @@
                 android:layout_height="22dp"
                 android:layout_gravity="center"
                 android:contentDescription="@string/widget_power_toggle"
-                android:src="@drawable/ic_widget_power" />
+                android:src="@drawable/lightbulb_24" />
         </FrameLayout>
 
         <FrameLayout
@@ -38,7 +38,7 @@
                 android:layout_height="22dp"
                 android:layout_gravity="center"
                 android:contentDescription="@string/widget_brightness_down"
-                android:src="@drawable/ic_widget_chevron_down" />
+                android:src="@drawable/arrow_down_24" />
         </FrameLayout>
 
         <FrameLayout
@@ -54,7 +54,7 @@
                 android:layout_height="22dp"
                 android:layout_gravity="center"
                 android:contentDescription="@string/widget_brightness_up"
-                android:src="@drawable/ic_widget_chevron_up" />
+                android:src="@drawable/arrow_up_24" />
         </FrameLayout>
     </LinearLayout>
 </FrameLayout>
