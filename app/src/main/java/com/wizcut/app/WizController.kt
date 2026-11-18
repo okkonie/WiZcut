@@ -108,21 +108,13 @@ object WizController {
 
     /**
      * Reads a bulb's current state with a getPilot request. Power and
-     * brightness always come back; r/g/b or temp are present depending
-     * on the bulb's current mode (color vs. white).
+     * brightness always come back; temp is present when the bulb is in
+     * white mode.
      */
     fun getPilot(device: WizDevice): WizDevice {
         val result = request(device.ip, "getPilot")
             .optJSONObject("result")
             ?: throw Exception("Invalid bulb response")
-
-        val color = if (result.has("r") || result.has("g") || result.has("b")) {
-            (result.optInt("r", 0) shl 16) or
-                (result.optInt("g", 0) shl 8) or
-                result.optInt("b", 0)
-        } else {
-            null
-        }
 
         val colorTemp = if (result.has("temp")) result.optInt("temp") else null
 
@@ -136,7 +128,6 @@ object WizController {
             ),
             isOnline = true,
             moduleName = device.moduleName,
-            color = color ?: device.color,
             colorTemp = colorTemp ?: device.colorTemp,
             kelvinMin = device.kelvinMin,
             kelvinMax = device.kelvinMax
@@ -145,7 +136,7 @@ object WizController {
 
     /**
      * Asks the bulb which module it is (e.g. ESP20_SHRGB_01), which
-     * decides whether color and temperature controls are offered.
+     * decides whether temperature controls are offered.
      * Some firmware also reports an explicit kelvinRange; it is used
      * when present and valid, otherwise the range is derived from the
      * module name in [WizCapabilities].

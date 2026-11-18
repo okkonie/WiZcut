@@ -4,31 +4,30 @@ A minimal Android app for controlling WiZ smart light bulbs directly over your l
 
 ## Features
 
-- **Discover bulbs** – Broadcasts on the local network and finds all WiZ bulbs that respond (no pairing required).
+- **Discover bulbs** – Searches automatically on the first open when nothing is saved yet; otherwise pull to search again. Finds all WiZ bulbs that respond (no pairing required).
 - **Power on/off** – Toggle each bulb individually.
-- **Brightness control** – Drag a slider to dim a bulb from 10% to 100%; the current percentage is shown next to the slider.
-- **White temperature** – Bulbs that support tunable white get a slider from warm to cool with the current kelvin value shown. The kelvin range comes from the bulb itself (its reported `kelvinRange`, or its module type; WiZ tunable bulbs are 2700–6500 K).
-- **RGB color** – Color-capable bulbs get a hue/saturation picker with a live preview circle, sent as plain `r`/`g`/`b` values.
-- **Device-driven features** – Color and temperature controls appear only for bulbs that report the capability over `getSystemConfig`. Dimmable-only bulbs show brightness only; nothing is assumed.
-- **Rename bulbs** – Give each bulb a custom name, kept across launches.
-- **Launcher shortcuts** – Long-press the app icon to toggle any bulb straight from the home screen. One shortcut per bulb, named after it; the toggle happens in the background without opening the app, confirmed by a toast.
-- **Home screen widget** – Pin a widget per bulb (transparent background, dark `#FF151515` button circles). Small widget is a power toggle; wider (or taller) widgets add brightness down/up buttons. Power button mirrors the app: white circle with a dark bulb while on, gray circle with a light bulb while off. Brightness buttons dim at limits and when offline.
-- **Persistent device list** – Discovered bulbs and their last known state are saved locally, so the app opens instantly with your bulbs ready.
-- **Fresh state on open** – Every bulb is queried directly when the app opens, so the power and brightness shown are always the bulbs' actual state, not a stale snapshot. Unreachable bulbs are dimmed with their controls disabled until they respond again.
-- **Fully local** – The only permission the app requests is `INTERNET`. Nothing leaves your Wi-Fi network.
+- **Brightness control** – Slider to dim a bulb
+- **Warmth presets** – Tunable-white bulbs get four chips instead of a second slider: Candle, Warm, Neutral, Cool
+- **Device-driven features** – Temperature controls appear only for bulbs that report the capability over `getSystemConfig`. Dimmable-only bulbs show brightness only.
+- **Rename bulbs** – Give each bulb a custom name.
+- **Launcher shortcuts** – One shortcut per bulb, named after it; the toggle happens in the background without opening the app.
+- **Home screen widget** – Pin a widget per bulb. Small widget is a power toggle and brightness down/up buttons.
+- **Persistent device list** – Discovered bulbs and their last known state are saved locally.
+- **Fresh state on open** – Every bulb is queried directly when the app opens, so the power and brightness shown are always the bulbs' actual state. Unreachable bulbs are dimmed with their controls disabled until they respond again.
+- **Fully local** – No cloud calls, no accounts. Two permissions: `INTERNET`, and `CHANGE_WIFI_MULTICAST_STATE` for the multicast lock that keeps broadcast discovery working on phones that filter broadcast UDP.
 
 ## How it works
 
 WiZ bulbs expose a simple JSON-over-UDP API on port **38899**. WiZcut uses it directly:
 
-| Action       | Method                                          | Payload                                                                                                                                                                               |
-| ------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Discover     | Broadcast `getPilot` to `255.255.255.255:38899` | Every bulb replies with its MAC, power state, and dimming level                                                                                                                       |
-| Toggle / dim | Unicast `setPilot` to the bulb's IP             | `{"state": true}`, `{"dimming": 50}`, or `{"temp": 4000}`                                                                                                                             |
-| Read state   | Unicast `getPilot`                              | Every bulb is queried when the app opens, and again after each command to confirm the new state                                                                                       |
-| Capabilities | Unicast `getSystemConfig`                       | Bulb reports its module name (e.g. `ESP20_SHRGB_01` = RGB + tunable white, `ESP20_TUN_01` = tunable only, `ESP01_DIM_01` = dim only) and, on some firmware, an explicit `kelvinRange` |
+| Action       | Method                                          | Payload                                                                                                                                                                                                                                                               |
+| ------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Discover     | Broadcast `getTime` + `getPilot` to `255.255.255.255:38899`, then unicast `getPilot` to any responder that gave no MAC | Awake bulbs reply with MAC, power state, and dimming level. Bulbs in standby (turned off) ignore broadcast `getPilot`, but they answer broadcast `getTime` (which wakes them) and unicast `getPilot`, so off bulbs are found too |
+| Toggle / dim | Unicast `setPilot` to the bulb's IP             | `{"state": true}`, `{"dimming": 50}`, or `{"temp": 4000}`                                                                                                                                                                                                             |
+| Read state   | Unicast `getPilot`                              | Every bulb is queried when the app opens, and again after each command to confirm the new state                                                                                                                                                                       |
+| Capabilities | Unicast `getSystemConfig`                       | Bulb reports its module name (e.g. `ESP20_SHRGB_01` = RGB + tunable white, `ESP20_TUN_01` = tunable only, `ESP01_DIM_01` = dim only) and, on some firmware, an explicit `kelvinRange`. RGB capability is detected from the module name, but no color picker ships yet |
 
-The UI is a single Jetpack Compose (Material 3) screen: tap **Find bulbs** to scan for 4 seconds, then use the name field, the on/off button next to it, and the sliders on each bulb card.
+The UI is a single Jetpack Compose (Material 3) screen: pull to search (the scan runs about 4 seconds), then use the name field, the on/off button next to it, the brightness slider and the warmth chips on each bulb card. There is no search button — the first open searches by itself when no bulbs are saved. Nothing pops up as a toast: the single status line under the title carries the state, and a failed command just shows as a dimmed, disabled card.
 
 Shortcuts are implemented as Android dynamic shortcuts: every saved bulb gets one (id = MAC address, labeled with its name). Each points at an invisible `NoDisplay` trampoline activity, so tapping it reads the bulb's current state and flips it in the background — the app UI never opens, and if it is already open, its cards update live through the shared in-process device repository.
 
@@ -57,7 +56,7 @@ adb shell monkey -p com.wizcut.app 1
 
 ```
 app/src/main/java/com/wizcut/app/
-├── MainActivity.kt       # Compose UI: discovery screen, bulb list, controls
+├── MainActivity.kt       # Compose UI: discovery screen, bulb list, brightness slider, warmth chips
 ├── ToggleActivity.kt     # Invisible shortcut trampoline: toggles a bulb, no UI
 ├── WizShortcuts.kt       # Publishes one dynamic launcher shortcut per bulb
 ├── WizWidget.kt         # Home screen widget: per-bulb toggle + brightness buttons
@@ -66,7 +65,7 @@ app/src/main/java/com/wizcut/app/
 ├── DeviceRepository.kt   # Shared bulb list state (UI + shortcuts + widgets stay in sync)
 ├── WizDiscovery.kt       # UDP broadcast discovery + WizDevice model
 ├── WizController.kt      # setPilot / getPilot / getSystemConfig commands (power, brightness, temperature)
-├── WizCapabilities.kt    # Maps bulb module names to RGB / kelvin capabilities
+├── WizCapabilities.kt    # Maps bulb module names to kelvin capability (RGB detection kept, currently unused)
 ├── WizPreferences.kt     # Saves bulbs and names to SharedPreferences
 └── ui/theme/             # Material 3 theme (colors, typography, shapes)
 ```
@@ -80,6 +79,6 @@ app/src/main/java/com/wizcut/app/
 
 ## Limitations
 
-- Power, brightness, white temperature, and RGB color — no scenes or scheduling (yet).
-- Bulbs are identified by IP address, which can change; offline bulbs are dimmed and disabled — re-run **Find bulbs** to refresh their addresses and bring them back.
-- Discovery relies on UDP broadcast, so it won't work across networks with client isolation enabled (common on guest Wi-Fi).
+- Power, brightness and white temperature only — no RGB color picker, no scenes or scheduling (yet).
+- Bulbs are identified by IP address, which can change; offline bulbs are dimmed and disabled — pull to search again to refresh their addresses.
+- Discovery relies on UDP broadcast, so it won't work across networks with client isolation enabled.

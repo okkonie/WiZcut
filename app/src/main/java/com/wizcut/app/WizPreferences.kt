@@ -47,11 +47,6 @@ object WizPreferences {
                     } else {
                         item.optString("moduleName").takeIf { it.isNotBlank() }
                     },
-                    color = if (item.has("color") && !item.isNull("color")) {
-                        item.optInt("color")
-                    } else {
-                        null
-                    },
                     colorTemp = if (item.has("colorTemp") && !item.isNull("colorTemp")) {
                         item.optInt("colorTemp")
                     } else {
@@ -114,12 +109,6 @@ object WizPreferences {
                     put("moduleName", device.moduleName)
                 } else {
                     put("moduleName", JSONObject.NULL)
-                }
-
-                if (device.color != null) {
-                    put("color", device.color)
-                } else {
-                    put("color", JSONObject.NULL)
                 }
 
                 if (device.colorTemp != null) {

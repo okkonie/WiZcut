@@ -33,7 +33,7 @@ class ToggleActivity : ComponentActivity() {
         val device = DeviceRepository.devices.firstOrNull { it.mac == mac }
 
         if (device == null) {
-            toast("Bulb not found — open WiZcut and tap Find bulbs")
+            toast("Bulb not found — open WiZcut and pull to search")
             return
         }
 

@@ -16,7 +16,6 @@ data class WizDevice(
     val brightness: Int?,
     val isOnline: Boolean = false,
     val moduleName: String? = null,
-    val color: Int? = null,
     val colorTemp: Int? = null,
     val kelvinMin: Int? = null,
     val kelvinMax: Int? = null
@@ -67,10 +66,26 @@ object WizDiscovery {
         return devices.values.toList()
     }
 
+    /**
+     * Broadcast round. Two requests go out every second:
+     *
+     * - `getTime` — the wake probe. WiZ bulbs in standby (turned off)
+     *   ignore broadcast `getPilot`, but they do answer broadcast
+     *   `getTime`, which wakes them.
+     * - `getPilot` — state for awake bulbs, answered directly.
+     *
+     * A responder that only sent `getTime` (no mac) is asked afterwards
+     * with a unicast `getPilot`; standby bulbs answer unicast requests.
+     */
     private fun discoverInternal(devices: LinkedHashMap<String, WizDevice>) {
 
-        val request = JSONObject().apply {
+        val pilotRequest = JSONObject().apply {
             put("method", "getPilot")
+            put("params", JSONObject())
+        }.toString().toByteArray(Charsets.UTF_8)
+
+        val wakeRequest = JSONObject().apply {
+            put("method", "getTime")
             put("params", JSONObject())
         }.toString().toByteArray(Charsets.UTF_8)
 
@@ -85,23 +100,33 @@ object WizDiscovery {
             val targets = mutableListOf(InetAddress.getByName("255.255.255.255"))
             targets.addAll(collectSubnetBroadcasts())
 
-            val packet = DatagramPacket(
-                request,
-                request.size,
-                targets.first(),
-                PORT
-            )
-
             val buffer = ByteArray(4096)
             val startTime = System.currentTimeMillis()
             var nextSend = 0L
+
+            // Addresses that answered but never identified themselves.
+            val woke = linkedMapOf<String, InetAddress>()
 
             while (System.currentTimeMillis() - startTime < TIMEOUT_MS) {
                 if (System.currentTimeMillis() >= nextSend) {
                     targets.forEach { address ->
                         try {
-                            packet.address = address
-                            socket.send(packet)
+                            socket.send(
+                                DatagramPacket(
+                                    wakeRequest,
+                                    wakeRequest.size,
+                                    address,
+                                    PORT
+                                )
+                            )
+                            socket.send(
+                                DatagramPacket(
+                                    pilotRequest,
+                                    pilotRequest.size,
+                                    address,
+                                    PORT
+                                )
+                            )
                         } catch (_: Exception) {
                             // Skip unreachable interfaces.
                         }
@@ -124,11 +149,18 @@ object WizDiscovery {
 
                     val result = json.optJSONObject("result") ?: continue
 
+                    val ip = response.address.hostAddress ?: continue
                     val mac = result.optString("mac")
-                    if (mac.isBlank()) continue
 
-                    val device = WizDevice(
-                        ip = response.address.hostAddress ?: continue,
+                    if (mac.isBlank()) {
+                        // A `getTime` reply: the bulb is awake, but this
+                        // firmware answered no pilot request yet.
+                        woke[ip] = response.address
+                        continue
+                    }
+
+                    devices[mac] = WizDevice(
+                        ip = ip,
                         mac = mac,
                         isOn = result.optBoolean("state"),
                         brightness = if (result.has("dimming")) {
@@ -139,12 +171,59 @@ object WizDiscovery {
                         isOnline = true
                     )
 
-                    devices[mac] = device
-
                 } catch (_: java.net.SocketTimeoutException) {
                     // Continue listening until the discovery timeout.
                 } catch (_: Exception) {
                     // Ignore malformed or unrelated UDP responses.
+                }
+            }
+
+            // Ask each woken address directly for its pilot state.
+            val pending = woke.filterKeys { ip ->
+                devices.values.none { device -> device.ip == ip }
+            }
+            socket.setSoTimeout(1500)
+
+            for ((ip, address) in pending) {
+                try {
+                    socket.send(
+                        DatagramPacket(
+                            pilotRequest,
+                            pilotRequest.size,
+                            address,
+                            PORT
+                        )
+                    )
+
+                    val response = DatagramPacket(buffer, buffer.size)
+                    socket.receive(response)
+
+                    val json = JSONObject(
+                        String(
+                            response.data,
+                            response.offset,
+                            response.length,
+                            Charsets.UTF_8
+                        )
+                    )
+
+                    val result = json.optJSONObject("result") ?: continue
+                    val mac = result.optString("mac")
+                    if (mac.isBlank()) continue
+
+                    devices[mac] = WizDevice(
+                        ip = ip,
+                        mac = mac,
+                        isOn = result.optBoolean("state"),
+                        brightness = if (result.has("dimming")) {
+                            result.optInt("dimming")
+                        } else {
+                            null
+                        },
+                        isOnline = true
+                    )
+                } catch (_: Exception) {
+                    // Not a WiZ bulb, or it stayed asleep.
                 }
             }
         }
